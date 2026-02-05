@@ -1,6 +1,6 @@
 Config = {}
 
-Config.BankScript = 'Renewed-Banking' -- Options: 'Renewed-Banking', 'qb-management', 'okokBanking', 'custom'
+Config.BankScript = 'Renewed-Banking' -- Options: 'Renewed-Banking', 'qb-management', 'okokBanking', 'esx_banking', 'custom'
 
 Config.Shops = {
     ['drugdealer'] = {

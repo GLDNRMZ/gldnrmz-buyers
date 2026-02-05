@@ -1,4 +1,36 @@
-local QBCore = exports['qb-core']:GetCoreObject()
+local Bridge = exports['community_bridge']:Bridge()
+local Framework = Bridge.Framework
+local Inventory = Bridge.Inventory
+local Notify = Bridge.Notify
+
+local function notifyPlayer(src, title, message, nType)
+    if Notify and Notify.SendNotification then
+        Notify.SendNotification(src, title, message, nType, 5000)
+        return
+    end
+    if Notify and Notify.SendNotify then
+        Notify.SendNotify(src, message, nType, 5000)
+        return
+    end
+    TriggerClientEvent('ox_lib:notify', src, { type = nType or 'info', description = message })
+end
+
+local function addCash(src, amount)
+    return Framework.AddAccountBalance(src, 'cash', amount)
+end
+
+local function getPlayerJobName(src)
+    local jobData = Framework.GetPlayerJobData and Framework.GetPlayerJobData(src) or nil
+    return jobData and jobData.jobName or nil
+end
+
+local function getPlayerName(src)
+    local first, last = Framework.GetPlayerName(src)
+    if first and last then
+        return (first .. ' ' .. last)
+    end
+    return first or last or 'Unknown'
+end
 
 local function AddSocietyMoney(society, amount)
     if not society or amount <= 0 then return end
@@ -9,6 +41,14 @@ local function AddSocietyMoney(society, amount)
         exports['qb-management']:AddMoney(society, amount)
     elseif Config.BankScript == 'okokBanking' then
         exports['okokBanking']:AddSocietyMoney(society, amount)
+    elseif Config.BankScript == 'esx_banking' then
+        TriggerEvent('esx_addonaccount:getSharedAccount', society, function(account)
+            if not account then
+                print(string.format("^3[gldnrmz-buyers] ESX account not found: %s^7", tostring(society)))
+                return
+            end
+            account.addMoney(amount)
+        end)
     elseif Config.BankScript == 'custom' then
         -- Add custom export here
         print("^3[gldnrmz-buyers] Custom banking selected but not configured.^7")
@@ -16,15 +56,15 @@ local function AddSocietyMoney(society, amount)
 end
 
 local function validateShopConditions(src, shopId)
-    local Player = QBCore.Functions.GetPlayer(src)
-    if not Player then return false end
+    local playerJob = getPlayerJobName(src)
+    if not playerJob then return false end
     
     local shopData = Config.Shops[shopId]
     if not shopData then return false end
 
     -- 1. Job Restriction Check
-    if shopData.restrictedJobs and shopData.restrictedJobs[Player.PlayerData.job.name] then
-        TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = "You cannot use this shop with your current job." })
+    if shopData.restrictedJobs and shopData.restrictedJobs[playerJob] then
+        notifyPlayer(src, 'Error', "You cannot use this shop with your current job.", 'error')
         return false
     end
 
@@ -43,8 +83,9 @@ local function validateShopConditions(src, shopId)
     end
 
     if not nearShop then
-        print(string.format("^1[Security] Player %s (ID: %s) attempted to sell items at %s but was too far away. Coords: %s^7", Player.PlayerData.name, src, shopId, coords))
-        TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = "You are too far from the shop." })
+        local playerName = getPlayerName(src)
+        print(string.format("^1[Security] Player %s (ID: %s) attempted to sell items at %s but was too far away. Coords: %s^7", playerName, src, shopId, coords))
+        notifyPlayer(src, 'Error', "You are too far from the shop.", 'error')
         return false
     end
 
@@ -62,15 +103,13 @@ RegisterNetEvent('gldnrmz-buyers:server:sellItems', function(args)
     
     local shopData = Config.Shops[shopId]
     local price = 0
-    local Player = QBCore.Functions.GetPlayer(src)
-    if not Player then return end
 
-    local inventory = exports.ox_inventory:GetInventoryItems(src)
+    local inventoryItems = Inventory.GetPlayerInventory and Inventory.GetPlayerInventory(src) or {}
     
-    if inventory then
-        for _, item in pairs(inventory) do
+    if inventoryItems then
+        for _, item in pairs(inventoryItems) do
             if shopData.items[item.name] then
-                local amount = item.count
+                local amount = item.count or item.amount or 0
                 if amount > 0 then
                     local itemPrice = 0
                     local priceData = shopData.items[item.name].price
@@ -82,7 +121,7 @@ RegisterNetEvent('gldnrmz-buyers:server:sellItems', function(args)
                     end
                     
                     price = price + (itemPrice * amount)
-                    exports.ox_inventory:RemoveItem(src, item.name, amount)
+                    Inventory.RemoveItem(src, item.name, amount)
                 end
             end
         end
@@ -100,21 +139,18 @@ RegisterNetEvent('gldnrmz-buyers:server:sellItems', function(args)
             end
         end
 
-        Player.Functions.AddMoney("cash", playerMoney)
-        TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = "You sold everything for $" .. playerMoney })
+        addCash(src, playerMoney)
+        notifyPlayer(src, 'Success', "You sold everything for $" .. playerMoney, 'success')
     else
-        TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = "You have nothing to sell!" })
+        notifyPlayer(src, 'Error', "You have nothing to sell!", 'error')
     end
 end)
 
 local function sellSpecificItem(src, itemName, label, shopId)
-    local Player = QBCore.Functions.GetPlayer(src)
-    if not Player then return end
-    
     local shopData = Config.Shops[shopId]
     if not shopData or not shopData.items[itemName] then return end
 
-    local count = exports.ox_inventory:Search(src, 'count', itemName)
+    local count = (Inventory.GetItemCount and Inventory.GetItemCount(src, itemName)) or 0
     if count > 0 then
         local priceData = shopData.items[itemName].price
         local singlePrice = 0
@@ -126,7 +162,7 @@ local function sellSpecificItem(src, itemName, label, shopId)
         end
         
         local price = singlePrice * count
-        if exports.ox_inventory:RemoveItem(src, itemName, count) then
+        if Inventory.RemoveItem(src, itemName, count) then
             local playerMoney = price
             
             -- Handle Society Funds
@@ -138,11 +174,11 @@ local function sellSpecificItem(src, itemName, label, shopId)
                 end
             end
 
-            Player.Functions.AddMoney("cash", playerMoney)
-            TriggerClientEvent('ox_lib:notify', src, { type = 'success', description = "You sold your " .. label .. " for $" .. playerMoney })
+            addCash(src, playerMoney)
+            notifyPlayer(src, 'Success', "You sold your " .. label .. " for $" .. playerMoney, 'success')
         end
     else
-        TriggerClientEvent('ox_lib:notify', src, { type = 'error', description = "You don't have " .. label .. " to sell" })
+        notifyPlayer(src, 'Error', "You don't have " .. label .. " to sell", 'error')
     end
 end
 

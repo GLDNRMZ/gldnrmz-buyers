@@ -1,95 +1,129 @@
 # gldnrmz-buyers
 
-A comprehensive and secure illegal shop/dealer system for QBCore, allowing players to sell specific items to configured NPC buyers.
+Flexible, optimized buyer and shop system for FiveM. Designed for server owners and developers to easily configure multiple buyer types, locations, and item sales. Supports standalone and framework-based environments.
 
-## Features
+---
 
-- **Flexible Ped Spawning**: Configurable locations with support for randomization (spawn at one random spot) or all locations.
-- **Customizable NPCs**: Set models, scenarios, and custom animations (dict/anim) for each dealer.
-- **Time Restrictions**: Optional opening hours (e.g., only open at night).
-- **Job Restrictions**: Blacklist specific jobs (e.g., police/ambulance) from interacting with dealers.
-- **Secure Selling**: 
-  - Server-side validation for distance and job checks to prevent exploits.
-  - Configurable min/max sell prices per item.
-- **Integration**:
-  - **ox_target** for interaction.
-  - **ox_lib** for progress bars and menus.
-  - **Dispatch** support for police alerts on interaction.
-  - Map blips with full customization.
+## ✨ Features
+- Multiple buyer/shop types: drugs, pawn, meat, fish, Rx, etc.
+- Highly configurable locations, items, and prices
+- Time-restricted and job-restricted shops
+- Society commission support for shops
+- Randomized or fixed ped locations
+- Blip and dispatch integration (optional)
+- Progress bars, animations, and context menus
+- Optimized for performance and security
+- Supports ox_lib, community_bridge, and custom banking
+- No hard dependency on any framework
 
-## Dependencies
+---
 
-- [qb-core](https://github.com/qbcore-framework/qb-core)
-- [ox_lib](https://github.com/overextended/ox_lib)
-- [ox_target](https://github.com/overextended/ox_target)
+## 📦 Requirements
+| Dependency         | Required | Link |
+|-------------------|----------|------|
+| ox_lib            | Yes      | [overextended/ox_lib](https://github.com/overextended/ox_lib) |
+| community_bridge  | Yes      | [community_bridge](https://github.com/TheOrderFivem/community_bridge/releases) |
+| Banking Script    | Yes      | (Configurable: Renewed-Banking, qb-management, okokBanking, esx_banking, custom) |
+| Target System     | Yes      | (community_bridge Target) |
+| Inventory System  | Yes      | (community_bridge Inventory) |
 
-## Installation
+---
 
-1. Download the resource and place it in your resources folder.
-2. Add `ensure gldnrmz-buyers` to your `server.cfg`.
-3. Configure your shops in `config.lua`.
+## ⚡ Installation
+1. Download or clone this repository into your resources folder.
+2. Ensure `ox_lib` and `community_bridge` are installed and started before this resource.
+3. Add to your `server.cfg`:
+   ```
+   ensure ox_lib
+   ensure community_bridge
+   ensure gldnrmz-buyers
+   ```
+   - If using a banking script, ensure it starts before gldnrmz-buyers.
+4. Edit `config.lua` to match your server setup and preferences.
 
-## Configuration
+---
 
-The `config.lua` file allows you to create multiple dealers with unique behaviors.
+## ⚙️ Configuration
+All configuration is handled in `config.lua`.
 
-### Example Configuration
-
+Example: Adding a new shop
 ```lua
-Config = {}
-
-Config.Shops = {
-    ['exampleshop'] = {
-        label = "Example Shop",
-        model = 'a_m_m_business_01', -- Ped model
-        pedScenario = "WORLD_HUMAN_STAND_MOBILE", -- Ped animation scenario (optional)
-        randomizeLocations = false, -- true = spawns at 1 random loc, false = spawns at all locs
-        locations = {
-            vec4(100.0, 200.0, 30.0, 90.0), -- x, y, z, w (heading)
-            vec4(150.0, 250.0, 30.0, 180.0),
-        },
-        timeRestricted = true, -- Enable opening hours
-        open = 8, -- Open at 8 AM
-        close = 22, -- Close at 10 PM
-        restrictedJobs = { ['police'] = true, ['ambulance'] = true }, -- Jobs that cannot use this shop
-        progress = {
-            duration = 5000, -- Progress bar duration in ms
-            label = 'Negotiating...', -- Progress bar text
-        },
-        animation = {
-            dict = "amb@world_human_stand_guard@male@idle_a", -- Custom animation dictionary
-            anim = "idle_a", -- Custom animation name
-        },
-        blip = {
-            enabled = true,
-            sprite = 500, 
-            color = 2, 
-            scale = 0.8, 
-            label = "Example Shop"
-        },
-        dispatch = {
-            enabled = true, -- Enable police dispatch on use
-            chance = 50, -- % chance to call police
-            call = function() 
-                -- Add your dispatch export here
-                -- Example: exports['ps-dispatch']:SuspiciousActivity()
-            end
-        },
-        society = {
-            enabled = true, -- Enable society payments
-            account = "police", -- The society account name (must exist in your banking system)
-            percent = 10,       -- 10% goes to society, 90% goes to player
-        },
-        items = {
-            ['water'] = { price = { min = 5, max = 10 }, label = 'Water Bottle' }, -- Randomized price
-            ['bread'] = { price = 5, label = 'Bread' }, -- Fixed price
-        }
-    },
+Config.Shops["pawnshop"] = {
+    label = "Pawn Shop",
+    model = 'a_m_m_paparazzi_01',
+    pedScenario = "WORLD_HUMAN_STAND_IMPATIENT",
+    locations = { vec4(-1457.73, -401.52, 34.84, 210.67) },
+    timeRestricted = false,
+    open = 8,
+    close = 20,
+    society = { enabled = true, account = "pawn", percent = 10 },
+    items = {
+        ['goldchain'] = { price = { min = 350, max = 350 }, label = 'Gold Chain' },
+        ['diamond_ring'] = { price = { min = 800, max = 800 }, label = 'Diamond Ring' },
+    }
 }
 ```
 
-## Security Note
+- **BankScript**: Set your banking system (`Renewed-Banking`, `qb-management`, etc.)
+- **Shops**: Define buyers, locations, items, restrictions, blips, and more
+- **Society**: Enable/disable commission and set account/percent
+- **Items**: Set price ranges and labels for each item
 
-This resource includes server-side validation to ensure players are:
-1. Actually near the dealer (prevents remote execution).
-2. Not employed in a restricted job (prevents job check bypass).
+---
+
+## 📘 Advanced Documentation
+### Shop Config Fields
+| Field           | Type      | Description |
+|-----------------|-----------|-------------|
+| label           | string    | Display name for shop |
+| model           | string    | Ped model name |
+| pedScenario     | string    | Ped scenario animation |
+| locations       | table     | Array of vec4 locations |
+| timeRestricted  | bool      | If true, shop only open between `open` and `close` |
+| open/close      | int       | Hours (0-24) shop opens/closes |
+| restrictedJobs  | table     | Jobs blocked from using shop |
+| progress        | table     | Progress bar config |
+| animation       | table     | Animation dict/anim |
+| blip            | table     | Blip config (enabled, sprite, color, scale, label) |
+| dispatch        | table     | Dispatch config (enabled, chance, call) |
+| society         | table     | Society commission config |
+| items           | table     | Items and price config |
+
+### Blip & Icon Reference
+- [GTA V Blip List](https://docs.fivem.net/docs/game-references/blips/)
+- Icons: FontAwesome, ox_lib context
+
+### Validation & Safety
+- All sales are validated server-side for job and distance
+- No client-side trust for item removal or payment
+
+---
+
+## ❗ Troubleshooting
+| Issue                        | Cause/Notes                          | Solution |
+|------------------------------|--------------------------------------|----------|
+| Shop not spawning            | Missing dependency or config error   | Check ox_lib, community_bridge, config.lua |
+| Items not selling            | Item not listed in config            | Add item to shop's `items` table |
+| No payment received          | Banking script not configured        | Set `Config.BankScript` and ensure dependency is started |
+| Dispatch not triggering      | Dispatch disabled or chance = 0      | Enable in config and set chance > 0 |
+| Debugging                    | Use print statements in server/main.lua for validation |
+
+---
+
+## 📄 License / Usage Rules
+- **No selling, reselling, or commercial use**
+- **Do not remove author credit**
+- **Modification allowed for personal/server use only**
+- **Do not redistribute as your own work**
+
+---
+
+## 👤 Credit
+- Author: GLDNRMZ#8700
+- [ox_lib](https://github.com/overextended/ox_lib) by overextended
+- [community_bridge](https://github.com/GLDNRMZ/community_bridge) by GLDNRMZ
+
+---
+
+## 📝 License Footer
+Attribution required. Redistribution only permitted with original credit and license. Commercial use strictly prohibited.

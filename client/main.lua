@@ -1,22 +1,41 @@
-local QBCore = exports['qb-core']:GetCoreObject()
+local Bridge = exports['community_bridge']:Bridge()
+local Target = Bridge.Target
+local Framework = Bridge.Framework
+local Inventory = Bridge.Inventory
 
 PlayerJob = {}
+
+local function refreshPlayerJob()
+    local jobData = Framework.GetPlayerJobData and Framework.GetPlayerJobData() or {}
+    PlayerJob = jobData or {}
+    if PlayerJob then
+        PlayerJob.name = jobData and jobData.jobName or PlayerJob.name
+    end
+end
+
+AddEventHandler('community_bridge:Client:OnPlayerLoaded', function()
+    refreshPlayerJob()
+end)
+
+AddEventHandler('community_bridge:Client:OnPlayerUnload', function()
+    PlayerJob = {}
+end)
+
+AddEventHandler('community_bridge:Client:OnPlayerJobUpdate', function(jobName, jobLabel, gradeName, gradeRank)
+    PlayerJob = PlayerJob or {}
+    PlayerJob.name = jobName
+    PlayerJob.jobName = jobName
+    PlayerJob.jobLabel = jobLabel
+    PlayerJob.gradeName = gradeName
+    PlayerJob.gradeRank = gradeRank
+end)
 
 AddEventHandler('onResourceStart', function(resourceName)
     if GetCurrentResourceName() == resourceName then
         Wait(200)
-        PlayerJob = QBCore.Functions.GetPlayerData().job
         isLoggedIn = true
+        refreshPlayerJob()
     end
-end)
-
-AddEventHandler('QBCore:Client:OnPlayerLoaded', function()
-    PlayerJob = QBCore.Functions.GetPlayerData().job
-end)
-
-RegisterNetEvent('QBCore:Client:OnJobUpdate')
-AddEventHandler('QBCore:Client:OnJobUpdate', function(JobInfo)
-    PlayerJob = JobInfo
 end)
 
 function loadAnimDict(dict) while (not HasAnimDictLoaded(dict)) do RequestAnimDict(dict) Wait(0) end end
@@ -81,7 +100,7 @@ function SpawnSinglePed(shopId, shopData, location)
         table.insert(shopBlips[shopId], blip)
     end
 
-    exports.ox_target:addLocalEntity(ped, {
+    Target.AddLocalEntity(ped, {
         {
             name = "sell_items_" .. shopId,
             icon = "fa-solid fa-comments-dollar",
@@ -105,6 +124,8 @@ function SpawnSinglePed(shopId, shopData, location)
                 }) then
                     ClearPedTasks(PlayerPedId())
                     if not shopData.restrictedJobs[PlayerJob.name] then
+                        local totalEverything = 0
+                        local commissionPercent = (shopData.society and shopData.society.enabled) and shopData.society.percent or 0
                         local options = {
                             {
                                 title = 'Sell Everything',
@@ -114,19 +135,60 @@ function SpawnSinglePed(shopId, shopData, location)
                                 args = { shopId = shopId }
                             }
                         }
+                        
+                        -- Add commission info as greyed out box if applicable
+                        if commissionPercent > 0 then
+                            table.insert(options, {
+                                title = 'Commission: -' .. commissionPercent .. '%',
+                                description = 'Society fee applied to all sales',
+                                icon = 'circle-info',
+                                disabled = true
+                            })
+                        end
 
                         for item, itemData in pairs(shopData.items) do
-                            local count = exports.ox_inventory:Search('count', item)
+                            local count = Inventory.GetItemCount and Inventory.GetItemCount(item) or 0
                             if count > 0 then
-                                local label = itemData.label or (exports.ox_inventory:Items()[item] and exports.ox_inventory:Items()[item].label) or item
+                                local itemInfo = Inventory.GetItemInfo and Inventory.GetItemInfo(item) or {}
+                                local label = itemData.label or itemInfo.label or item
+                                local priceData = itemData.price
+                                local itemPrice = 0
+                                
+                                -- Calculate price
+                                if type(priceData) == 'table' then
+                                    itemPrice = math.ceil((priceData.min + priceData.max) / 2)
+                                else
+                                    itemPrice = priceData
+                                end
+                                
+                                local totalPrice = itemPrice * count
+                                totalEverything = totalEverything + totalPrice
+                                
+                                -- Calculate after commission
+                                local afterCommission = totalPrice
+                                if commissionPercent > 0 then
+                                    local commissionAmount = math.floor(totalPrice * (commissionPercent / 100))
+                                    afterCommission = totalPrice - commissionAmount
+                                end
+                                
                                 table.insert(options, {
-                                    title = 'Sell ' .. label,
-                                    description = 'Sell your ' .. label,
+                                    title = 'Sell ' .. label .. ' x' .. count,
+                                    description = '$' .. itemPrice .. ' ea | You get: $' .. afterCommission,
                                     icon = 'tag', 
                                     serverEvent = 'gldnrmz-buyers:server:sellSpecific',
                                     args = { item = item, shopId = shopId }
                                 })
                             end
+                        end
+                        
+                        -- Update "Sell Everything" with total
+                        if totalEverything > 0 then
+                            local afterCommission = totalEverything
+                            if commissionPercent > 0 then
+                                local commissionAmount = math.floor(totalEverything * (commissionPercent / 100))
+                                afterCommission = totalEverything - commissionAmount
+                            end
+                            options[1].description = 'You will receive: $' .. afterCommission
                         end
 
                         if #options == 1 then
@@ -205,7 +267,7 @@ CreateThread(function()
                     for _, ped in pairs(shopPeds[shopId]) do
                         if DoesEntityExist(ped) then
                             -- Remove target options so players can't interact
-                            exports.ox_target:removeLocalEntity(ped, "sell_items_" .. shopId)
+                            Target.RemoveLocalEntity(ped, "sell_items_" .. shopId)
                             
                             -- Make ped walk away
                             FreezeEntityPosition(ped, false)
