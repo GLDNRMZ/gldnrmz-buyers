@@ -1,6 +1,19 @@
 Config = {}
 
-Config.BankScript = 'Renewed-Banking' -- Options: 'Renewed-Banking', 'qb-management', 'okokBanking', 'esx_banking', 'custom'
+-- Where society commission is paid.
+-- Options: 'Renewed-Banking', 'qb-banking', 'qb-management', 'okokBanking', 'esx_banking', 'custom'
+Config.BankScript = 'Renewed-Banking'
+
+Config.MaxSellDistance = 10.0 -- Server-side max distance (meters) from the buyer to negotiate/sell
+Config.SpawnDistance = 75.0   -- Peds only exist while a player is within this range
+Config.QuoteTimeout = 120     -- Seconds a negotiated price list stays valid
+Config.RelocateMinutes = 60   -- How often randomized buyers move (0 = only on restart)
+Config.Logging = true         -- Log sales through ox_lib's logger (set up ox:logger convars)
+
+--[[
+    dispatch.call(shopId, coords) runs on the selling player's client.
+    Errors are caught, so a missing dispatch resource won't break selling.
+]]
 
 Config.Shops = {
     ['drugdealer'] = {
@@ -35,7 +48,7 @@ Config.Shops = {
         close = 7,
         restrictedJobs = { ['police'] = true },
         progress = {
-            duration = 200000,
+            duration = 20000,
             label = 'Negotiating Price..',
         },
         animation = {
@@ -52,17 +65,17 @@ Config.Shops = {
         dispatch = {
             enabled = true,
             chance = 90,
-            call = function()
-                exports.tk_dispatch:addCall({ 
-                    title = 'Solicitation', 
-                    code = '10-82', 
-                    priority = 'Priority 2', 
-                    coords = GetEntityCoords(PlayerPedId()), 
-                    showLocation = true, 
-                    showGender = true, 
-                    playSound = true, 
-                    blip = { color = 8, sprite = 279, scale = 1.0 }, 
-                    jobs = {'police'}, 
+            call = function(_shopId, coords)
+                exports.tk_dispatch:addCall({
+                    title = 'Solicitation',
+                    code = '10-82',
+                    priority = 'Priority 2',
+                    coords = coords,
+                    showLocation = true,
+                    showGender = true,
+                    playSound = true,
+                    blip = { color = 8, sprite = 279, scale = 1.0 },
+                    jobs = {'police'},
                 })
             end
         },
@@ -84,7 +97,7 @@ Config.Shops = {
             ['weed_ak47']       = { price = { min = 80, max = 120 }, label = 'AK-47 Weed' },
         }
     },
-    
+
     ['pawnshop'] = {
         label = "Pawn Shop",
         model = 'a_m_m_paparazzi_01',
@@ -93,8 +106,8 @@ Config.Shops = {
         locations = {
             vec4(-1457.73, -401.52, 34.84, 210.67),
         },
-  
-        timeRestricted = false,      
+
+        timeRestricted = false,
         open = 8,
         close = 20,
         restrictedJobs = {},

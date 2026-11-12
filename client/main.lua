@@ -1,308 +1,319 @@
-local Bridge = exports['community_bridge']:Bridge()
+local Bridge = exports.community_bridge:Bridge()
 local Target = Bridge.Target
-local Framework = Bridge.Framework
-local Inventory = Bridge.Inventory
 
-PlayerJob = {}
+local RESOURCE = GetCurrentResourceName()
+local LOCATION_KEY = ('%s:locations'):format(RESOURCE)
+local MENU_ID = 'gldnrmz_buyers_menu'
 
-local function refreshPlayerJob()
-    local jobData = Framework.GetPlayerJobData and Framework.GetPlayerJobData() or {}
-    PlayerJob = jobData or {}
-    if PlayerJob then
-        PlayerJob.name = jobData and jobData.jobName or PlayerJob.name
+--[[
+    shopId -> {
+        open    = bool,
+        points  = { lib.points },
+        blips   = { blip handles },
+        peds    = { [point] = ped },
+    }
+]]
+local shops = {}
+local leavingPeds = {}
+local busy = false
+
+-----------------------------------------------------------------------
+-- Helpers
+-----------------------------------------------------------------------
+
+local function notify(message, nType)
+    if message then
+        lib.notify({ description = message, type = nType or 'inform' })
     end
 end
 
-AddEventHandler('community_bridge:Client:OnPlayerLoaded', function()
-    refreshPlayerJob()
-end)
-
-AddEventHandler('community_bridge:Client:OnPlayerUnload', function()
-    PlayerJob = {}
-end)
-
-AddEventHandler('community_bridge:Client:OnPlayerJobUpdate', function(jobName, jobLabel, gradeName, gradeRank)
-    PlayerJob = PlayerJob or {}
-    PlayerJob.name = jobName
-    PlayerJob.jobName = jobName
-    PlayerJob.jobLabel = jobLabel
-    PlayerJob.gradeName = gradeName
-    PlayerJob.gradeRank = gradeRank
-end)
-
-AddEventHandler('onResourceStart', function(resourceName)
-    if GetCurrentResourceName() == resourceName then
-        Wait(200)
-        isLoggedIn = true
-        refreshPlayerJob()
+local function isShopOpen(shop)
+    if not shop.timeRestricted then return true end
+    local hour = GetClockHours()
+    if shop.open < shop.close then
+        return hour >= shop.open and hour < shop.close
     end
-end)
+    return hour >= shop.open or hour < shop.close
+end
 
-function loadAnimDict(dict) while (not HasAnimDictLoaded(dict)) do RequestAnimDict(dict) Wait(0) end end
-
--- Change shopPeds and shopBlips to support arrays (multiple entities per shopId)
-local shopPeds = {} -- shopId -> { ped1, ped2, ... }
-local shopBlips = {} -- shopId -> { blip1, blip2, ... }
-local isLeaving = {}
-
-function DeleteShopPed(shopId)
-    -- Delete all peds for this shop
-    if shopPeds[shopId] then
-        for _, ped in pairs(shopPeds[shopId]) do
-            if DoesEntityExist(ped) then
-                DeletePed(ped)
-            end
-        end
-        shopPeds[shopId] = nil
+local function getLocations(shopId, shop)
+    if shop.randomizeLocations then
+        local index = (GlobalState[LOCATION_KEY] or {})[shopId]
+        return index and { shop.locations[index] } or {}
     end
-    
-    -- Remove all blips for this shop
-    if shopBlips[shopId] then
-        for _, blip in pairs(shopBlips[shopId]) do
-            RemoveBlip(blip)
-        end
-        shopBlips[shopId] = nil
+    return shop.locations
+end
+
+local function targetName(shopId)
+    return 'sell_items_' .. shopId
+end
+
+-----------------------------------------------------------------------
+-- Selling flow
+-----------------------------------------------------------------------
+
+local openMenu
+
+local function sell(shopId, itemName)
+    local ok, message, quote = lib.callback.await('gldnrmz-buyers:server:sell', false, shopId, itemName)
+    notify(message, ok and 'success' or 'error')
+
+    if quote and #quote.items > 0 then
+        openMenu(shopId, quote)
     end
 end
 
-function SpawnSinglePed(shopId, shopData, location)
-    RequestModel(GetHashKey(shopData.model))
-    while not HasModelLoaded(GetHashKey(shopData.model)) do
-        Wait(0)
+function openMenu(shopId, quote)
+    local shop = Config.Shops[shopId]
+    local options = {
+        {
+            title = 'Sell Everything',
+            description = ('You will receive: $%d'):format(quote.total),
+            icon = 'sack-dollar',
+            onSelect = function()
+                local answer = lib.alertDialog({
+                    header = 'Sell All Items',
+                    content = ('Sell everything listed for **$%d**?'):format(quote.total),
+                    centered = true,
+                    cancel = true,
+                })
+                if answer == 'confirm' then
+                    sell(shopId, nil)
+                else
+                    openMenu(shopId, quote)
+                end
+            end,
+        },
+    }
+
+    if quote.commission > 0 then
+        options[#options + 1] = {
+            title = ('Commission: -%d%%'):format(quote.commission),
+            description = 'Society fee applied to all sales',
+            icon = 'circle-info',
+            disabled = true,
+        }
     end
 
-    local ped = CreatePed(0, GetHashKey(shopData.model), location.x, location.y, location.z, location.w, false, false)
-    
-    -- Initialize table if it doesn't exist
-    if not shopPeds[shopId] then shopPeds[shopId] = {} end
-    table.insert(shopPeds[shopId], ped)
+    for _, item in ipairs(quote.items) do
+        options[#options + 1] = {
+            title = ('Sell %s x%d'):format(item.label, item.count),
+            description = ('$%d ea | You get: $%d'):format(item.unit, item.payout),
+            icon = 'tag',
+            onSelect = function()
+                sell(shopId, item.name)
+            end,
+        }
+    end
 
-    SetEntityAsMissionEntity(ped)
-    SetPedFleeAttributes(ped, 0, 0)
+    lib.registerContext({ id = MENU_ID, title = shop.label, options = options })
+    lib.showContext(MENU_ID)
+end
+
+local function negotiate(shopId)
+    if busy then return end
+    busy = true
+
+    local shop = Config.Shops[shopId]
+    local ok, reason = lib.callback.await('gldnrmz-buyers:server:startNegotiation', false, shopId)
+    if not ok then
+        notify(reason or 'The buyer is not interested right now.', 'error')
+        busy = false
+        return
+    end
+
+    local dispatch = shop.dispatch
+    if dispatch and dispatch.enabled and dispatch.call and math.random(100) <= dispatch.chance then
+        local success, err = pcall(dispatch.call, shopId, GetEntityCoords(cache.ped))
+        if not success then
+            print(('^3[%s] Dispatch call failed for %s: %s^7'):format(RESOURCE, shopId, err))
+        end
+    end
+
+    local progress = shop.progress or {}
+    local anim = shop.animation
+    local completed = lib.progressBar({
+        duration = progress.duration or 5000,
+        label = progress.label or 'Negotiating...',
+        useWhileDead = false,
+        canCancel = true,
+        disable = { car = true, move = true, combat = true },
+        anim = anim and { dict = anim.dict, clip = anim.anim } or nil,
+    })
+
+    if not completed then
+        busy = false
+        return
+    end
+
+    local success, quote = lib.callback.await('gldnrmz-buyers:server:getQuote', false, shopId)
+    busy = false
+
+    if not success then
+        notify(quote or 'The deal fell through.', 'error')
+    elseif #quote.items == 0 then
+        notify("You have nothing I'm interested in.", 'error')
+    else
+        openMenu(shopId, quote)
+    end
+end
+
+-----------------------------------------------------------------------
+-- Peds and blips
+-----------------------------------------------------------------------
+
+local function spawnPed(shopId, shop, loc)
+    local ok, model = pcall(lib.requestModel, shop.model, 10000)
+    if not ok then
+        print(('^1[%s] Failed to load model %s for %s^7'):format(RESOURCE, shop.model, shopId))
+        return
+    end
+
+    local ped = CreatePed(4, model, loc.x, loc.y, loc.z, loc.w, false, true)
+    SetModelAsNoLongerNeeded(model)
+
+    SetEntityAsMissionEntity(ped, true, true)
+    SetPedFleeAttributes(ped, 0, false)
     SetBlockingOfNonTemporaryEvents(ped, true)
+    SetPedCanRagdoll(ped, false)
     SetEntityInvincible(ped, true)
     FreezeEntityPosition(ped, true)
-    TaskStartScenarioInPlace(ped, shopData.pedScenario, 0, true)
-
-    if shopData.blip and shopData.blip.enabled then
-        local blip = AddBlipForCoord(location.x, location.y, location.z)
-        SetBlipSprite(blip, shopData.blip.sprite)
-        SetBlipDisplay(blip, 4)
-        SetBlipScale(blip, shopData.blip.scale)
-        SetBlipColour(blip, shopData.blip.color)
-        SetBlipAsShortRange(blip, true)
-        BeginTextCommandSetBlipName("STRING")
-        AddTextComponentString(shopData.blip.label)
-        EndTextCommandSetBlipName(blip)
-        
-        -- Initialize table if it doesn't exist
-        if not shopBlips[shopId] then shopBlips[shopId] = {} end
-        table.insert(shopBlips[shopId], blip)
+    if shop.pedScenario then
+        TaskStartScenarioInPlace(ped, shop.pedScenario, 0, true)
     end
 
     Target.AddLocalEntity(ped, {
         {
-            name = "sell_items_" .. shopId,
-            icon = "fa-solid fa-comments-dollar",
-            label = "Sell items to " .. shopData.label,
-            onSelect = function(data)
-                loadAnimDict(shopData.animation.dict)
-                TaskPlayAnim(PlayerPedId(), shopData.animation.dict, shopData.animation.anim, 8.0, 1.0, -1, 1, 0, 0, 0, 0)
-                
-                if shopData.dispatch.enabled and math.random(1, 100) <= shopData.dispatch.chance then
-                    shopData.dispatch.call()
-                end 
-                
-                if lib.progressBar({
-                    duration = shopData.progress.duration,
-                    label = shopData.progress.label,
-                    useWhileDead = false,
-                    canCancel = true,
-                    disable = {
-                        car = true,
-                    },
-                }) then
-                    ClearPedTasks(PlayerPedId())
-                    if not shopData.restrictedJobs[PlayerJob.name] then
-                        local totalEverything = 0
-                        local commissionPercent = (shopData.society and shopData.society.enabled) and shopData.society.percent or 0
-                        local options = {
-                            {
-                                title = 'Sell Everything',
-                                description = 'Sell all matching items',
-                                icon = 'chart-pie',
-                                event = 'gldnrmz-buyers:client:confirmSellAll',
-                                args = { shopId = shopId }
-                            }
-                        }
-                        
-                        -- Add commission info as greyed out box if applicable
-                        if commissionPercent > 0 then
-                            table.insert(options, {
-                                title = 'Commission: -' .. commissionPercent .. '%',
-                                description = 'Society fee applied to all sales',
-                                icon = 'circle-info',
-                                disabled = true
-                            })
-                        end
-
-                        for item, itemData in pairs(shopData.items) do
-                            local count = Inventory.GetItemCount and Inventory.GetItemCount(item) or 0
-                            if count > 0 then
-                                local itemInfo = Inventory.GetItemInfo and Inventory.GetItemInfo(item) or {}
-                                local label = itemData.label or itemInfo.label or item
-                                local priceData = itemData.price
-                                local itemPrice = 0
-                                
-                                -- Calculate price
-                                if type(priceData) == 'table' then
-                                    itemPrice = math.ceil((priceData.min + priceData.max) / 2)
-                                else
-                                    itemPrice = priceData
-                                end
-                                
-                                local totalPrice = itemPrice * count
-                                totalEverything = totalEverything + totalPrice
-                                
-                                -- Calculate after commission
-                                local afterCommission = totalPrice
-                                if commissionPercent > 0 then
-                                    local commissionAmount = math.floor(totalPrice * (commissionPercent / 100))
-                                    afterCommission = totalPrice - commissionAmount
-                                end
-                                
-                                table.insert(options, {
-                                    title = 'Sell ' .. label .. ' x' .. count,
-                                    description = '$' .. itemPrice .. ' ea | You get: $' .. afterCommission,
-                                    icon = 'tag', 
-                                    serverEvent = 'gldnrmz-buyers:server:sellSpecific',
-                                    args = { item = item, shopId = shopId }
-                                })
-                            end
-                        end
-                        
-                        -- Update "Sell Everything" with total
-                        if totalEverything > 0 then
-                            local afterCommission = totalEverything
-                            if commissionPercent > 0 then
-                                local commissionAmount = math.floor(totalEverything * (commissionPercent / 100))
-                                afterCommission = totalEverything - commissionAmount
-                            end
-                            options[1].description = 'You will receive: $' .. afterCommission
-                        end
-
-                        if #options == 1 then
-                            lib.notify({ description = "You have nothing I'm interested in.", type = 'error' })
-                        else
-                            lib.registerContext({
-                                id = 'sell_menu_' .. shopId,
-                                title = shopData.label,
-                                options = options
-                            })
-                            lib.showContext('sell_menu_' .. shopId)
-                        end
-                    else
-                        lib.notify({ description = "I don't deal with your kind!", type = 'error' })
-                    end
-                else
-                    ClearPedTasks(PlayerPedId())
-                end
-            end
-        }
+            name = targetName(shopId),
+            icon = 'fa-solid fa-comments-dollar',
+            label = 'Sell items to ' .. shop.label,
+            distance = 2.5,
+            onSelect = function()
+                negotiate(shopId)
+            end,
+        },
     })
+
+    return ped
 end
 
-RegisterNetEvent('gldnrmz-buyers:client:confirmSellAll', function(data)
-    local alert = lib.alertDialog({
-        header = 'Sell All Items',
-        content = 'Are you sure you want to sell all available items to this store?',
-        centered = true,
-        cancel = true
-    })
-
-    if alert == 'confirm' then
-        TriggerServerEvent('gldnrmz-buyers:server:sellItems', data)
+local function deletePed(shopId, ped)
+    if ped and DoesEntityExist(ped) then
+        Target.RemoveLocalEntity(ped, targetName(shopId))
+        DeleteEntity(ped)
     end
-end)
+end
 
-function CreateShopPed(shopId, shopData)
-    if shopData.randomizeLocations then
-        -- Spawn ONE ped at a RANDOM location
-        local locIndex = math.random(#shopData.locations)
-        local location = shopData.locations[locIndex]
-        SpawnSinglePed(shopId, shopData, location)
-    else
-        -- Spawn ALL peds at ALL locations
-        for _, location in ipairs(shopData.locations) do
-            SpawnSinglePed(shopId, shopData, location)
+local function createBlip(shop, loc)
+    local cfg = shop.blip
+    local blip = AddBlipForCoord(loc.x, loc.y, loc.z)
+    SetBlipSprite(blip, cfg.sprite)
+    SetBlipDisplay(blip, 4)
+    SetBlipScale(blip, cfg.scale)
+    SetBlipColour(blip, cfg.color)
+    SetBlipAsShortRange(blip, true)
+    BeginTextCommandSetBlipName('STRING')
+    AddTextComponentSubstringPlayerName(cfg.label)
+    EndTextCommandSetBlipName(blip)
+    return blip
+end
+
+--- Shows the shop: blips plus proximity points that spawn the ped when a player is near.
+local function openShop(shopId, shop)
+    local state = { open = true, points = {}, blips = {}, peds = {} }
+    shops[shopId] = state
+
+    for _, loc in ipairs(getLocations(shopId, shop)) do
+        if shop.blip and shop.blip.enabled then
+            state.blips[#state.blips + 1] = createBlip(shop, loc)
+        end
+
+        local point = lib.points.new({ coords = loc.xyz, distance = Config.SpawnDistance })
+
+        function point:onEnter()
+            state.peds[self] = spawnPed(shopId, shop, loc)
+        end
+
+        function point:onExit()
+            deletePed(shopId, state.peds[self])
+            state.peds[self] = nil
+        end
+
+        state.points[#state.points + 1] = point
+    end
+end
+
+--- Hides the shop. With `walkAway`, peds wander off before being deleted.
+local function closeShop(shopId, walkAway)
+    local state = shops[shopId]
+    if not state then return end
+    shops[shopId] = nil
+
+    for _, point in ipairs(state.points) do point:remove() end
+    for _, blip in ipairs(state.blips) do RemoveBlip(blip) end
+
+    for _, ped in pairs(state.peds) do
+        if walkAway and DoesEntityExist(ped) then
+            Target.RemoveLocalEntity(ped, targetName(shopId))
+            FreezeEntityPosition(ped, false)
+            ClearPedTasks(ped)
+            TaskWanderStandard(ped, 10.0, 10)
+            leavingPeds[ped] = shopId
+            SetTimeout(15000, function()
+                if leavingPeds[ped] then
+                    leavingPeds[ped] = nil
+                    deletePed(shopId, ped)
+                end
+            end)
+        else
+            deletePed(shopId, ped)
         end
     end
+
+    if lib.getOpenContextMenu() == MENU_ID then lib.hideContext() end
 end
+
+-----------------------------------------------------------------------
+-- Opening hours and location sync
+-----------------------------------------------------------------------
 
 CreateThread(function()
     while true do
-        Wait(1000)
-        local hours = GetClockHours()
-
-        for shopId, shopData in pairs(Config.Shops) do
-            local isOpen = false
-
-            if not shopData.timeRestricted then
-                 isOpen = true
-            elseif shopData.open < shopData.close then
-                 if hours >= shopData.open and hours < shopData.close then isOpen = true end
-            else
-                 if hours >= shopData.open or hours < shopData.close then isOpen = true end
+        for shopId, shop in pairs(Config.Shops) do
+            local open = isShopOpen(shop)
+            if open and not shops[shopId] then
+                openShop(shopId, shop)
+            elseif not open and shops[shopId] then
+                closeShop(shopId, true)
             end
+        end
+        Wait(5000)
+    end
+end)
 
-            if isOpen then
-                isLeaving[shopId] = false
-                if not shopPeds[shopId] then -- Check if table exists (meaning peds spawned)
-                    CreateShopPed(shopId, shopData)
+-- Server moved a randomized shop: rebuild it at the new spot.
+AddStateBagChangeHandler(LOCATION_KEY, 'global', function(_, _, value)
+    local previous = GlobalState[LOCATION_KEY] or {}
+    for shopId, index in pairs(value or {}) do
+        if previous[shopId] ~= index and shops[shopId] then
+            closeShop(shopId, false)
+            -- GlobalState updates after this handler runs; wait a tick so getLocations sees the new index.
+            SetTimeout(0, function()
+                local shop = Config.Shops[shopId]
+                if shop and not shops[shopId] and isShopOpen(shop) then
+                    openShop(shopId, shop)
                 end
-            else
-                if shopPeds[shopId] and not isLeaving[shopId] then
-                    isLeaving[shopId] = true
-                    
-                    for _, ped in pairs(shopPeds[shopId]) do
-                        if DoesEntityExist(ped) then
-                            -- Remove target options so players can't interact
-                            Target.RemoveLocalEntity(ped, "sell_items_" .. shopId)
-                            
-                            -- Make ped walk away
-                            FreezeEntityPosition(ped, false)
-                            ClearPedTasks(ped)
-                            TaskWanderStandard(ped, 10.0, 10)
-                        end
-                    end
-                    
-                    SetTimeout(15000, function()
-                        DeleteShopPed(shopId)
-                        isLeaving[shopId] = false
-                    end)
-                end
-            end
+            end)
         end
     end
 end)
 
---------------------
--- RESOURCE STOP --
---------------------
-
-AddEventHandler('onResourceStop', function(resourceName) 
-	if GetCurrentResourceName() == resourceName then
-        for shopId, peds in pairs(shopPeds) do
-            for _, ped in pairs(peds) do
-                if DoesEntityExist(ped) then
-                    DeletePed(ped)
-                end
-            end
-        end
-        for shopId, blips in pairs(shopBlips) do
-            for _, blip in pairs(blips) do
-                RemoveBlip(blip)
-            end
-        end
-	end 
+AddEventHandler('onResourceStop', function(resourceName)
+    if resourceName ~= RESOURCE then return end
+    for shopId in pairs(shops) do
+        closeShop(shopId, false)
+    end
+    for ped, shopId in pairs(leavingPeds) do
+        deletePed(shopId, ped)
+    end
 end)

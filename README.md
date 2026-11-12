@@ -93,9 +93,26 @@ Config.Shops["pawnshop"] = {
 - [GTA V Blip List](https://docs.fivem.net/docs/game-references/blips/)
 - Icons: FontAwesome, ox_lib context
 
+### Global Settings
+| Setting           | Default | Description |
+|-------------------|---------|-------------|
+| MaxSellDistance   | 10.0    | Max distance (m) from the buyer, checked server-side |
+| SpawnDistance     | 75.0    | Peds only spawn while a player is within this range |
+| QuoteTimeout      | 120     | Seconds a negotiated price list stays valid |
+| RelocateMinutes   | 60      | How often `randomizeLocations` buyers move (0 = restart only) |
+| Logging           | true    | Logs sales via ox_lib `lib.logger` |
+
+`dispatch.call(shopId, coords)` runs on the seller's client; errors are caught.
+
 ### Validation & Safety
-- All sales are validated server-side for job and distance
-- No client-side trust for item removal or payment
+The sale is a three-step server-authoritative flow:
+1. **startNegotiation** — server checks restricted jobs and distance, then starts a timer.
+2. **getQuote** — rejected if the progress duration hasn't actually elapsed; prices are rolled and locked in.
+3. **sell** — only quoted items, only while near the buyer, before the quote expires, rate-limited. Items are removed before payment.
+
+Randomized buyer locations are chosen by the server and synced to all players via GlobalState, so everyone sees the dealer in the same spot.
+
+> Opening hours (`timeRestricted`) are enforced on the client only — the server has no game clock.
 
 ---
 
