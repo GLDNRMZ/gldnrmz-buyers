@@ -66,6 +66,13 @@ Config.Shops = {
             enabled = true,
             chance = 90,
             call = function(_shopId, coords)
+                -- No tk_dispatch: community_bridge sends it to whatever dispatch you run
+                if GetResourceState('tk_dispatch') ~= 'started' then
+                    return exports.community_bridge:Dispatch().SendAlert({
+                        message = 'Solicitation', code = '10-82', coords = coords, jobs = { 'police' },
+                        blipData = { sprite = 279, color = 8, scale = 1.0 },
+                    })
+                end
                 exports.tk_dispatch:addCall({
                     title = 'Solicitation',
                     code = '10-82',
