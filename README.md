@@ -132,23 +132,20 @@ Randomized buyer locations are chosen by the server and synced to all players vi
 
 ---
 
-## 📄 License / Usage Rules
-- **No selling, reselling, or commercial use**
-- **Do not remove author credit**
-- **Modification allowed for personal/server use only**
-- **Do not redistribute as your own work**
-
----
-
 ## 👤 Credit
 - Author: GLDNRMZ#8700
 - [ox_lib](https://github.com/overextended/ox_lib) by overextended
 - [community_bridge](https://github.com/TheOrderFivem/community_bridge) by The Order
 
----
+## 📄 License
 
-## 📝 License Footer
-Attribution required. Redistribution only permitted with original credit and license. Commercial use strictly prohibited.
+**GLDNRMZ Script License** - see [LICENSE](LICENSE).
+
+- ✅ Run it on your own server and edit it for that server
+- ❌ Don't sell it, re-upload or share it (free or paid), or put it in a pack or server build
+- ❌ Don't remove the credits or claim it as your own
+
+Need something else, like a commercial license? Ask on [Discord](https://discord.gg/7YHJ7774jA).
 
 <!-- gldnrmz-links -->
 ---
