@@ -65,14 +65,15 @@ Config.Shops = {
         dispatch = {
             enabled = true,
             chance = 90,
+            -- Default: community_bridge sends it to whatever dispatch you run (ps / cd / qs / lb / tk / ...).
             call = function(_shopId, coords)
-                -- No tk_dispatch: community_bridge sends it to whatever dispatch you run
-                if GetResourceState('tk_dispatch') ~= 'started' then
-                    return exports.community_bridge:Dispatch().SendAlert({
-                        message = 'Solicitation', code = '10-82', coords = coords, jobs = { 'police' },
-                        blipData = { sprite = 279, color = 8, scale = 1.0 },
-                    })
-                end
+                exports.community_bridge:Dispatch().SendAlert({
+                    message = 'Solicitation', code = '10-82', coords = coords, jobs = { 'police' },
+                    blipData = { sprite = 279, color = 8, scale = 1.0 },
+                })
+            end,
+            -- tk_dispatch directly (more detail), if you prefer:
+            --[[ call = function(_shopId, coords)
                 exports.tk_dispatch:addCall({
                     title = 'Solicitation',
                     code = '10-82',
@@ -84,7 +85,7 @@ Config.Shops = {
                     blip = { color = 8, sprite = 279, scale = 1.0 },
                     jobs = {'police'},
                 })
-            end
+            end, ]]
         },
         items = {
             ['cokebaggy']       = { price = { min = 100, max = 140 }, label = 'Bag of Coke' },
