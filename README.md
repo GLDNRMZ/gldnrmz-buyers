@@ -22,10 +22,9 @@ Flexible, optimized buyer and shop system for FiveM. Designed for server owners 
 | Dependency         | Required | Link |
 |-------------------|----------|------|
 | ox_lib            | Yes      | [overextended/ox_lib](https://github.com/overextended/ox_lib) |
-| community_bridge  | Yes      | [community_bridge](https://github.com/TheOrderFivem/community_bridge/releases) |
-| Banking Script    | Yes      | (Configurable: Renewed-Banking, qb-management, okokBanking, esx_banking, custom) |
-| Target System     | Yes      | (community_bridge Target) |
-| Inventory System  | Yes      | (community_bridge Inventory) |
+| community_bridge **0.13.6+** | Yes | [community_bridge](https://github.com/TheOrderFivem/community_bridge/releases) (Qbox, QBCore or ESX) |
+| Target / inventory | Yes      | Any that community_bridge supports (ox_target, qb-target, ox_inventory, qb-inventory, ...) |
+| Banking script    | Only for society commission | Renewed-Banking, qb-management, okokBanking, esx_banking or custom (`Config.BankScript`) |
 
 ---
 
@@ -38,8 +37,9 @@ Flexible, optimized buyer and shop system for FiveM. Designed for server owners 
    ensure community_bridge
    ensure gldnrmz-buyers
    ```
-   - If using a banking script, ensure it starts before gldnrmz-buyers.
-4. Edit `config.lua` to match your server setup and preferences.
+   - If you use society commission, start your banking script before gldnrmz-buyers.
+4. Every item a shop buys must exist in your inventory's item list.
+5. Edit `config.lua` to match your server setup and preferences.
 
 ---
 
@@ -102,7 +102,7 @@ Config.Shops["pawnshop"] = {
 | RelocateMinutes   | 60      | How often `randomizeLocations` buyers move (0 = restart only) |
 | Logging           | true    | Logs sales via ox_lib `lib.logger` |
 
-`dispatch.call(shopId, coords)` runs on the seller's client; errors are caught.
+`dispatch.call(shopId, coords)` runs on the seller's client; errors are caught. The pawn shop's default sends the alert through community_bridge (any supported dispatch); a tk_dispatch version is included as a commented example.
 
 ### Validation & Safety
 The sale is a three-step server-authoritative flow:
@@ -127,6 +127,11 @@ Randomized buyer locations are chosen by the server and synced to all players vi
 
 ---
 
+## Changes in 2.1.0
+- The pawn shop's police alert uses community_bridge by default instead of tk_dispatch.
+
+---
+
 ## 📄 License / Usage Rules
 - **No selling, reselling, or commercial use**
 - **Do not remove author credit**
@@ -138,7 +143,7 @@ Randomized buyer locations are chosen by the server and synced to all players vi
 ## 👤 Credit
 - Author: GLDNRMZ#8700
 - [ox_lib](https://github.com/overextended/ox_lib) by overextended
-- [community_bridge](https://github.com/GLDNRMZ/community_bridge) by GLDNRMZ
+- [community_bridge](https://github.com/TheOrderFivem/community_bridge) by The Order
 
 ---
 
