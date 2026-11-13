@@ -22,8 +22,8 @@ Flexible, optimized buyer and shop system for FiveM. Designed for server owners 
 | Dependency         | Required | Link |
 |-------------------|----------|------|
 | ox_lib            | Yes      | [overextended/ox_lib](https://github.com/overextended/ox_lib) |
-| community_bridge **0.13.6+** | Yes | [community_bridge](https://github.com/TheOrderFivem/community_bridge/releases) (Qbox, QBCore or ESX) |
-| Target / inventory | Yes      | Any that community_bridge supports (ox_target, qb-target, ox_inventory, qb-inventory, ...) |
+| community_bridge **0.13.6+** | Yes | [community_bridge](https://github.com/TheOrderFivem/community_bridge/releases) ([Qbox](https://github.com/Qbox-project/qbx_core), [QBCore](https://github.com/qbcore-framework/qb-core) or [ESX](https://github.com/esx-framework/esx_core)) |
+| Target / inventory | Yes      | Any that [community_bridge](https://github.com/TheOrderFivem/community_bridge) supports ([ox_target](https://github.com/overextended/ox_target), [qb-target](https://github.com/qbcore-framework/qb-target), [ox_inventory](https://github.com/overextended/ox_inventory), qb-inventory, ...) |
 | Banking script    | Only for society commission | Renewed-Banking, qb-management, okokBanking, esx_banking or custom (`Config.BankScript`) |
 
 ---
@@ -127,7 +127,7 @@ Randomized buyer locations are chosen by the server and synced to all players vi
 
 ---
 
-## Changes in 2.1.0
+## 🆕 Changes in 2.1.0
 - The pawn shop's police alert uses community_bridge by default instead of tk_dispatch.
 
 ---
@@ -149,3 +149,16 @@ Randomized buyer locations are chosen by the server and synced to all players vi
 
 ## 📝 License Footer
 Attribution required. Redistribution only permitted with original credit and license. Commercial use strictly prohibited.
+
+<!-- gldnrmz-links -->
+---
+
+## 🔗 Links
+
+<p align="center">
+  <a href="https://discord.gg/7YHJ7774jA"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
+  <a href="https://forum.cfx.re/u/gldnrmz/summary"><img src="https://img.shields.io/badge/Cfx.re-F40552?style=for-the-badge&logoColor=white" alt="Cfx.re forum" /></a>
+  <a href="https://5metrics.dev/resources?search=gldnrmz"><img src="https://img.shields.io/badge/5Metrics-00BFFF?style=for-the-badge&logoColor=white" alt="5Metrics" /></a>
+  <a href="https://gldnrmz.tebex.io"><img src="https://img.shields.io/badge/Tebex-FFD700?style=for-the-badge&logoColor=black" alt="Tebex store" /></a>
+  <a href="https://www.buymeacoffee.com/gldnrmz"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FF813F?style=for-the-badge&logo=buymeacoffee&logoColor=white" alt="Buy me a coffee" /></a>
+</p>
